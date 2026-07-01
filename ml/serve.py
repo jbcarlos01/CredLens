@@ -1,5 +1,5 @@
 """
-FastAPI inference service for RiskLens AI.
+FastAPI inference service for CredLens.
 Falls back to heuristic scoring when no trained model is present.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 MODEL_PATH = Path(__file__).parent / "models" / "credit_risk_model.joblib"
 META_PATH = Path(__file__).parent / "models" / "metadata.json"
 
-app = FastAPI(title="RiskLens ML Service", version="1.0.0")
+app = FastAPI(title="CredLens ML Service", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -1,4 +1,4 @@
-# RiskLens AI
+# CredLens
 
 Web application for credit risk assessment in the Banking, Finance & Insurance sector. Scores loan applications with machine learning, surfaces explainable risk factors, and includes a chat advisor for applicants and analysts.
 

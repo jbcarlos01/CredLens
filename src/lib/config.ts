@@ -1,4 +1,5 @@
 /** Philippines locale & lending defaults */
+export const APP_NAME = "CredLens";
 export const APP_LOCALE = "en-PH";
 export const CURRENCY = "PHP";
 

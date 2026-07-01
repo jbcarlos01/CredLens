@@ -1,6 +1,7 @@
 import type { RiskFactorResult, ScoringResult } from "./scoring";
 import { tierLabel } from "./scoring";
 import { formatCurrency, formatPercent } from "./utils";
+import { APP_NAME } from "./config";
 import { isKaggleRecord, modelVersionLabel } from "./model-info";
 
 export type AdvisorContext = {
@@ -110,8 +111,8 @@ function greeting(ctx: AdvisorContext, history: { role: string; content: string 
 
   const dti = debtToIncome(ctx);
   const intro = isKaggleRecord(ctx.email, ctx.loanPurpose)
-    ? `I'm Marco, your loan advisor here at RiskLens. I've reviewed your file — including data from our Home Credit risk model trained on over 300,000 real loan records from Kaggle.`
-    : `I'm Marco, your loan advisor at RiskLens. I've gone through your application and the output from our credit risk model.`;
+    ? `I'm Marco, your loan advisor here at ${APP_NAME}. I've reviewed your file — including data from our Home Credit risk model trained on over 300,000 real loan records from Kaggle.`
+    : `I'm Marco, your loan advisor at ${APP_NAME}. I've gone through your application and the output from our credit risk model.`;
 
   return `${intro}\n\nYou're currently rated ${tierLabel(ctx.scoring.riskTier)} with a ${formatPercent(ctx.scoring.defaultProbability)} estimated default probability. Your debt-to-income ratio sits around ${(dti * 100).toFixed(0)}%.\n\nAsk me anything — why you got this score, what to improve, or how the model works.`;
 }
@@ -134,7 +135,7 @@ function explainScore(ctx: AdvisorContext): string {
 }
 
 function explainModel(ctx: AdvisorContext): string {
-  return `Great question. RiskLens uses an XGBoost machine learning model trained on the Home Credit Default Risk dataset from Kaggle — roughly 307,000 real loan applications with known outcomes (repaid vs defaulted).
+  return `Great question. ${APP_NAME} uses an XGBoost machine learning model trained on the Home Credit Default Risk dataset from Kaggle — roughly 307,000 real loan applications with known outcomes (repaid vs defaulted).
 
 Your application was scored using ${modelVersionLabel(ctx.scoring.modelVersion).toLowerCase()}. The model weighs things like income, loan size, employment stability, credit history, and debt burden — the same signals Philippine lenders care about.
 
@@ -266,7 +267,7 @@ export async function generateAdvisorReplyWithLlm(
     .map((f) => `- ${f.label}: ${f.value ?? "n/a"} (${f.direction} risk)`)
     .join("\n");
 
-  const systemPrompt = `You are Marco, a senior loan advisor at RiskLens, a Philippine fintech lender. You speak warmly and clearly, like a knowledgeable human colleague — not a robot.
+  const systemPrompt = `You are Marco, a senior loan advisor at ${APP_NAME}, a Philippine fintech lender. You speak warmly and clearly, like a knowledgeable human colleague — not a robot.
 
 RULES:
 - Use Philippine Peso (PHP). Be empathetic, honest, and never guarantee approval.

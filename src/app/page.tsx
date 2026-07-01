@@ -3,6 +3,7 @@ import { ArrowRight, BarChart3, Bot, ShieldCheck } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { APP_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 const features = [
@@ -40,7 +41,7 @@ export default function HomePage() {
               Credit risk scoring with explainability.
             </h1>
             <p className="text-lg text-slate-600">
-              RiskLens AI scores loan applications in Philippine Peso, routes them to the right
+              {APP_NAME} scores loan applications in Philippine Peso, routes them to the right
               decision tier, and helps applicants understand their risk profile — built for modern
               lenders in the Philippines.
             </p>

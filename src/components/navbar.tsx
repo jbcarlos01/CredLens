@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Shield } from "lucide-react";
+import { APP_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -16,7 +17,7 @@ export function Navbar() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
             <Shield className="h-4 w-4" />
           </span>
-          <span className="tracking-tight">RiskLens AI</span>
+          <span className="tracking-tight">{APP_NAME}</span>
         </Link>
         <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-600">
           {links.map((link) => (
