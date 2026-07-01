@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RiskLens AI — Credit Risk Intelligence",
+  title: "RiskLens AI",
   description:
-    "Intelligent loan decision platform with ML risk scoring, explainability, and AI advisory.",
+    "Loan application scoring with ML risk tiers, explainable factors, and advisor chat.",
 };
 
 export default function RootLayout({

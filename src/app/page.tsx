@@ -14,9 +14,9 @@ const features = [
   },
   {
     icon: Bot,
-    title: "Agentic AI advisor",
+    title: "Risk advisor chat",
     description:
-      "Applicants get personalized guidance on why they were scored and how to improve.",
+      "Applicants and analysts can ask questions about scores, factors, and next steps.",
   },
   {
     icon: BarChart3,
@@ -37,7 +37,7 @@ export default function HomePage() {
               Banking · Finance · Insurance
             </p>
             <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-              Intelligent credit decisions, explained.
+              Credit risk scoring with explainability.
             </h1>
             <p className="text-lg text-slate-600">
               RiskLens AI scores loan applications in Philippine Peso, routes them to the right

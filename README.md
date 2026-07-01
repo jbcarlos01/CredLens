@@ -1,8 +1,8 @@
 # RiskLens AI
 
-**Intelligent credit risk platform** for the Banking, Finance & Insurance sector. Scores loan applications with machine learning, explains decisions with transparent risk factors, and provides an agentic AI advisor for applicants and loan officers.
+Web application for credit risk assessment in the Banking, Finance & Insurance sector. Scores loan applications with machine learning, surfaces explainable risk factors, and includes a chat advisor for applicants and analysts.
 
-## Capstone overview
+## Tech stack
 
 | Component | Technology |
 |-----------|------------|
@@ -11,7 +11,7 @@
 | Database | [Neon](https://neon.tech) PostgreSQL, Prisma ORM |
 | ML training | Python, scikit-learn, XGBoost (Home Credit dataset) |
 | ML inference | FastAPI service (optional) |
-| AI advisor | Rule-based agent (+ optional OpenAI) |
+| Advisor chat | Rule-based responses (+ optional OpenAI) |
 
 ## Features
 
@@ -130,7 +130,7 @@ OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-Without an API key, the advisor uses intelligent rule-based responses.
+Without an API key, the advisor uses rule-based responses.
 
 ## Project structure
 
@@ -155,14 +155,6 @@ risklens-ai/
 | POST | `/api/chat` | AI advisor message |
 | GET | `/api/stats` | Dashboard statistics |
 
-## Demo flow (pitch)
-
-1. **Landing** — explain the product value proposition
-2. **Apply** — submit a loan application (try different profiles)
-3. **Results** — show risk score, tier, explainable factors
-4. **Advisor** — ask *"Why was I flagged for review?"* or *"How can I improve?"*
-5. **Dashboard** — approve/decline medium-risk cases, show portfolio chart
-
 ## Dataset reference
 
 - Primary: [Home Credit Default Risk](https://www.kaggle.com/competitions/home-credit-default-risk) (~307K applications)
@@ -170,4 +162,4 @@ risklens-ai/
 
 ## License
 
-Capstone project — educational use.
+Educational use.
