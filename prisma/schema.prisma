@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RiskTier {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REVIEW
+  DECLINED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  SELF_EMPLOYED
+  UNEMPLOYED
+  RETIRED
+}
+
+model Application {
+  id                String            @id @default(cuid())
+  applicantName     String
+  email             String
+  phone             String?
+  age               Int
+  employmentType    EmploymentType
+  employmentYears   Float
+  annualIncome      Float
+  loanAmount        Float
+  loanTermMonths    Int
+  existingDebt      Float
+  creditHistoryYears Float
+  numCreditInquiries Int
+  hasDelinquency    Boolean           @default(false)
+  homeOwnership     String
+  loanPurpose       String?
+  status            ApplicationStatus @default(PENDING)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  prediction        Prediction?
+  chatSessions      ChatSession[]
+}
+
+model Prediction {
+  id              String     @id @default(cuid())
+  applicationId   String     @unique
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  defaultProbability Float
+  riskTier        RiskTier
+  modelVersion    String
+  factors         RiskFactor[]
+  createdAt       DateTime   @default(now())
+}
+
+model RiskFactor {
+  id           String     @id @default(cuid())
+  predictionId String
+  prediction   Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  feature      String
+  label        String
+  impact       Float
+  direction    String
+  value        String?
+}
+
+model ChatSession {
+  id            String        @id @default(cuid())
+  applicationId String
+  application   Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  messages      ChatMessage[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime    @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+}

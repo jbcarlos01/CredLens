@@ -1,0 +1,21 @@
+{
+  "model_version": "risklens-xgb-homecredit-v1",
+  "test_auc": 0.7279,
+  "feature_columns": [
+    "AGE_YEARS",
+    "AMT_INCOME_TOTAL",
+    "AMT_CREDIT",
+    "AMT_ANNUITY",
+    "CNT_CHILDREN",
+    "DAYS_EMPLOYED",
+    "EXT_SOURCE_1",
+    "EXT_SOURCE_2",
+    "EXT_SOURCE_3",
+    "NAME_INCOME_TYPE",
+    "NAME_HOUSING_TYPE"
+  ],
+  "thresholds": {
+    "medium": 0.18,
+    "high": 0.35
+  }
+}
