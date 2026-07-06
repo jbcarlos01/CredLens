@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAnalyst } from "@/lib/analyst-auth";
+import { formApplicationsWhere } from "@/lib/application-filters";
 import { prisma } from "@/lib/prisma";
 import { scoreWithMlService } from "@/lib/ml-client";
 import {
@@ -8,21 +9,61 @@ import {
   tierToStatus,
 } from "@/lib/scoring";
 import { applicationSchema } from "@/lib/validations";
+import type { ApplicationStatus, RiskTier } from "@/generated/prisma/client";
 
-export async function GET() {
+export async function GET(request: Request) {
   const authError = await requireAnalyst();
   if (authError) return authError;
 
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(searchParams.get("limit") ?? "10", 10) || 10),
+  );
+  const skip = (page - 1) * limit;
+
+  const status = searchParams.get("status") as ApplicationStatus | null;
+  const riskTier = searchParams.get("riskTier") as RiskTier | null;
+  const search = searchParams.get("search")?.trim();
+
+  const filters: Parameters<typeof formApplicationsWhere>[0] = {};
+  if (status) filters.status = status;
+  if (riskTier) filters.prediction = { is: { riskTier } };
+  if (search) {
+    filters.OR = [
+      { applicantName: { contains: search, mode: "insensitive" } },
+      { email: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  const where = formApplicationsWhere(filters);
+
   try {
-    const applications = await prisma.application.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { prediction: true },
-      take: 100,
+    const [applications, total] = await Promise.all([
+      prisma.application.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        include: { prediction: true },
+        skip,
+        take: limit,
+      }),
+      prisma.application.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      applications,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
-    return NextResponse.json(applications);
   } catch {
     return NextResponse.json(
-      { error: "Database unavailable. Check your Neon DATABASE_URL in .env and run npm run db:push." },
+      {
+        error:
+          "Database unavailable. Check your Neon DATABASE_URL in .env and run npm run db:push.",
+      },
       { status: 503 },
     );
   }

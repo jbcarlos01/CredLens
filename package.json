@@ -16,9 +16,8 @@
     "ml:download": "python ml/download_data.py",
     "ml:sample": "python ml/scripts/create_import_sample.py",
     "ml:train": "python ml/train.py",
-    "ml:import": "npx tsx scripts/import-kaggle.ts",
     "ml:serve": "cd ml && uvicorn serve:app --reload --port 8000",
-    "ml:setup": "npm run ml:sample && npm run ml:train && npm run ml:import"
+    "ml:setup": "npm run ml:sample && npm run ml:train"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

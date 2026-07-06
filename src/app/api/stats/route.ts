@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
 import { requireAnalyst } from "@/lib/analyst-auth";
+import { formApplicationsWhere } from "@/lib/application-filters";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const authError = await requireAnalyst();
   if (authError) return authError;
 
+  const where = formApplicationsWhere();
+
   try {
     const [total, approved, review, declined, predictions] = await Promise.all([
-      prisma.application.count(),
-      prisma.application.count({ where: { status: "APPROVED" } }),
-      prisma.application.count({ where: { status: "REVIEW" } }),
-      prisma.application.count({ where: { status: "DECLINED" } }),
+      prisma.application.count({ where }),
+      prisma.application.count({ where: { ...where, status: "APPROVED" } }),
+      prisma.application.count({ where: { ...where, status: "REVIEW" } }),
+      prisma.application.count({ where: { ...where, status: "DECLINED" } }),
       prisma.prediction.findMany({
+        where: { application: where },
         select: { defaultProbability: true, riskTier: true },
       }),
     ]);

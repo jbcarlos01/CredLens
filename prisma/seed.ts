@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { KAGGLE_EMAIL_SUFFIX } from "../src/lib/application-filters";
 
 const connectionString =
   process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? "";
@@ -19,14 +20,16 @@ async function main() {
       OR: [
         { email: { in: SEED_EMAILS } },
         { prediction: { is: { modelVersion: "risklens-seed-v1" } } },
+        { email: { endsWith: KAGGLE_EMAIL_SUFFIX } },
+        { loanPurpose: { contains: "Home Credit Kaggle" } },
       ],
     },
   });
 
   if (removed.count === 0) {
-    console.log("No seed data found. Dashboard uses Kaggle imports + form submissions only.");
+    console.log("No legacy or Kaggle import data found. Dashboard shows form submissions only.");
   } else {
-    console.log(`Removed ${removed.count} seed application(s).`);
+    console.log(`Removed ${removed.count} legacy/Kaggle application(s).`);
   }
 }
 
