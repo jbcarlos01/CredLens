@@ -12,12 +12,27 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { ChevronLeft, ChevronRight, Loader2, LogOut, RotateCcw } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  ClipboardList,
+  Download,
+  Inbox,
+  Loader2,
+  LogOut,
+  PieChart as PieChartIcon,
+  RotateCcw,
+  SearchX,
+} from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ToastProvider, useToast } from "@/components/ui/toast";
+import { needsVerification } from "@/lib/application-query";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import { statusLabel, tierLabel } from "@/lib/scoring";
 
@@ -191,6 +206,9 @@ function DistributionPieCard({
   data,
   centerLabel,
   tooltipSuffix = "risk",
+  emptyTitle,
+  emptyDescription,
+  emptyAccent,
 }: {
   title: string;
   description: string;
@@ -198,6 +216,9 @@ function DistributionPieCard({
   data: ChartSlice[];
   centerLabel: string;
   tooltipSuffix?: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  emptyAccent: "emerald" | "indigo";
 }) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
 
@@ -210,9 +231,13 @@ function DistributionPieCard({
       <CardContent className="p-4">
         <div className="relative mx-auto aspect-square max-h-[380px] w-full min-h-[320px]">
           {data.length === 0 ? (
-            <p className="flex h-full items-center justify-center text-sm text-slate-500">
-              No applications yet.
-            </p>
+            <EmptyState
+              icon={PieChartIcon}
+              title={emptyTitle}
+              description={emptyDescription}
+              accent={emptyAccent}
+              className="h-full"
+            />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -290,14 +315,18 @@ function DistributionPieCard({
   );
 }
 
-export function DashboardContent() {
+function DashboardInner() {
   const router = useRouter();
+  const { toast } = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
   const [reviewData, setReviewData] = useState<ApplicationsResponse | null>(null);
   const [appsData, setAppsData] = useState<ApplicationsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [appsLoading, setAppsLoading] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set());
 
   const [reviewPage, setReviewPage] = useState(1);
   const [appsPage, setAppsPage] = useState(1);
@@ -310,6 +339,10 @@ export function DashboardContent() {
     const timer = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  useEffect(() => {
+    setSelectedReviewIds(new Set());
+  }, [reviewPage]);
 
   const loadReview = useCallback(async (page: number) => {
     const params = new URLSearchParams({
@@ -346,6 +379,38 @@ export function DashboardContent() {
     },
     [router],
   );
+
+  const refreshDataSilent = useCallback(async () => {
+    try {
+      const [statsRes, review, apps] = await Promise.all([
+        fetch("/api/stats"),
+        loadReview(reviewPage),
+        loadApps(appsPage, {
+          search: debouncedSearch,
+          status: statusFilter,
+          tier: tierFilter,
+        }),
+      ]);
+      if (statsRes.status === 401) {
+        router.refresh();
+        return;
+      }
+      if (statsRes.ok) setStats(await statsRes.json());
+      if (review) setReviewData(review);
+      if (apps) setAppsData(apps);
+    } catch {
+      /* keep current data visible */
+    }
+  }, [
+    router,
+    reviewPage,
+    appsPage,
+    debouncedSearch,
+    statusFilter,
+    tierFilter,
+    loadReview,
+    loadApps,
+  ]);
 
   const loadDashboard = useCallback(async () => {
     setDashboardLoading(true);
@@ -399,10 +464,17 @@ export function DashboardContent() {
   }, [loadAppsSection]);
 
   async function refreshAll() {
-    await Promise.all([loadDashboard(), loadAppsSection()]);
+    setDashboardLoading(true);
+    setAppsLoading(true);
+    try {
+      await refreshDataSilent();
+    } finally {
+      setDashboardLoading(false);
+      setAppsLoading(false);
+    }
   }
 
-  async function updateStatus(id: string, status: "APPROVED" | "DECLINED") {
+  async function updateStatus(id: string, status: "APPROVED" | "DECLINED", name?: string) {
     const response = await fetch(`/api/applications/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -410,11 +482,95 @@ export function DashboardContent() {
     });
     if (response.status === 401) {
       router.refresh();
-      return;
+      return false;
     }
-    setReviewPage(1);
-    setAppsPage(1);
-    await refreshAll();
+    if (!response.ok) {
+      toast("Failed to update application", "error");
+      return false;
+    }
+    setSelectedReviewIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    toast(
+      name
+        ? `${name} ${status === "APPROVED" ? "approved" : "declined"}`
+        : `Application ${status === "APPROVED" ? "approved" : "declined"}`,
+    );
+    await refreshDataSilent();
+    return true;
+  }
+
+  async function bulkUpdateStatus(status: "APPROVED" | "DECLINED") {
+    const ids = Array.from(selectedReviewIds);
+    if (ids.length === 0) return;
+
+    setBulkLoading(true);
+    try {
+      const response = await fetch("/api/applications/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, status }),
+      });
+      if (response.status === 401) {
+        router.refresh();
+        return;
+      }
+      if (!response.ok) {
+        toast("Bulk update failed", "error");
+        return;
+      }
+      const result = (await response.json()) as { updated: number };
+      if (result.updated === 0) {
+        toast("No applications were updated", "error");
+        return;
+      }
+      setSelectedReviewIds(new Set());
+      toast(
+        `${result.updated} application${result.updated !== 1 ? "s" : ""} ${status === "APPROVED" ? "approved" : "declined"}`,
+      );
+      await refreshDataSilent();
+    } catch {
+      toast("Bulk update failed", "error");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (statusFilter) params.set("status", statusFilter);
+      if (tierFilter) params.set("riskTier", tierFilter);
+
+      const response = await fetch(`/api/applications/export?${params}`);
+      if (response.status === 401) {
+        router.refresh();
+        return;
+      }
+      if (!response.ok) {
+        toast("Export failed", "error");
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download =
+        response.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1] ??
+        "credlens-applications.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast("Applications exported to CSV");
+    } catch {
+      toast("Export failed", "error");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function logout() {
@@ -428,6 +584,15 @@ export function DashboardContent() {
     setStatusFilter("");
     setTierFilter("");
     setAppsPage(1);
+  }
+
+  function toggleReviewSelection(id: string) {
+    setSelectedReviewIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   const hasActiveFilters = Boolean(searchInput || statusFilter || tierFilter);
@@ -459,6 +624,9 @@ export function DashboardContent() {
   }, [stats]);
 
   const reviewQueue = reviewData?.applications ?? [];
+  const allPageSelected =
+    reviewQueue.length > 0 && reviewQueue.every((app) => selectedReviewIds.has(app.id));
+  const hasPortfolio = (stats?.total ?? 0) > 0;
 
   const statCards = stats
     ? [
@@ -529,7 +697,23 @@ export function DashboardContent() {
           </div>
         )}
 
-        {stats && (
+        {!dashboardLoading && !hasPortfolio && (
+          <Card className="mb-8 overflow-hidden border-slate-200/60 bg-white/90 shadow-md">
+            <EmptyState
+              icon={Inbox}
+              title="No applications yet"
+              description="Applications submitted through the form will appear here. Share the apply link to start receiving loan requests."
+              accent="emerald"
+              action={
+                <Link href="/apply" className={cn(buttonVariants({ variant: "default" }))}>
+                  View apply page
+                </Link>
+              }
+            />
+          </Card>
+        )}
+
+        {stats && hasPortfolio && (
           <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {statCards.map((item) => (
               <Card
@@ -548,29 +732,80 @@ export function DashboardContent() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <DistributionPieCard
-            title="Risk tier distribution"
-            description="Share of applications by predicted risk tier"
-            headerGradient="bg-gradient-to-r from-white to-emerald-50/40"
-            data={tierChartData}
-            centerLabel="applications"
-            tooltipSuffix="risk tier"
-          />
-          <DistributionPieCard
-            title="Application status"
-            description="Pending (incl. manual review), approved, and declined"
-            headerGradient="bg-gradient-to-r from-white to-indigo-50/40"
-            data={statusChartData}
-            centerLabel="applications"
-            tooltipSuffix="status"
-          />
-        </div>
+        {hasPortfolio && (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <DistributionPieCard
+              title="Risk tier distribution"
+              description="Share of applications by predicted risk tier"
+              headerGradient="bg-gradient-to-r from-white to-emerald-50/40"
+              data={tierChartData}
+              centerLabel="applications"
+              tooltipSuffix="risk tier"
+              emptyTitle="No risk data yet"
+              emptyDescription="Charts will populate once applications are scored."
+              emptyAccent="emerald"
+            />
+            <DistributionPieCard
+              title="Application status"
+              description="Pending (incl. manual review), approved, and declined"
+              headerGradient="bg-gradient-to-r from-white to-indigo-50/40"
+              data={statusChartData}
+              centerLabel="applications"
+              tooltipSuffix="status"
+              emptyTitle="No status data yet"
+              emptyDescription="Status breakdown appears after the first submission."
+              emptyAccent="indigo"
+            />
+          </div>
+        )}
 
         <Card className="mt-6 flex flex-col overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
           <CardHeader className="border-b border-slate-100/80 bg-gradient-to-r from-white to-amber-50/40 pb-4">
-            <CardTitle>Review queue</CardTitle>
-            <CardDescription>Medium-risk applications needing manual decision</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Review queue</CardTitle>
+                <CardDescription>Medium-risk applications needing manual decision</CardDescription>
+              </div>
+              {reviewQueue.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      onChange={() => {
+                        if (allPageSelected) setSelectedReviewIds(new Set());
+                        else setSelectedReviewIds(new Set(reviewQueue.map((a) => a.id)));
+                      }}
+                      className="h-4 w-4 cursor-pointer rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Select all on page
+                  </label>
+                  {selectedReviewIds.size > 0 && (
+                    <>
+                      <span className="text-xs text-slate-500">
+                        {selectedReviewIds.size} selected
+                      </span>
+                      <Button
+                        size="sm"
+                        disabled={bulkLoading}
+                        onClick={() => bulkUpdateStatus("APPROVED")}
+                      >
+                        {bulkLoading && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                        Approve selected
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={bulkLoading}
+                        onClick={() => bulkUpdateStatus("DECLINED")}
+                      >
+                        Decline selected
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent
             className="flex flex-col p-4"
@@ -580,33 +815,54 @@ export function DashboardContent() {
               {dashboardLoading && reviewQueue.length === 0 ? (
                 <LoadingOverlay label="Loading review queue…" />
               ) : reviewQueue.length === 0 ? (
-                <p className="flex h-full items-center justify-center text-sm text-slate-500">
-                  No applications pending review.
-                </p>
+                <EmptyState
+                  icon={ClipboardCheck}
+                  title="Review queue is clear"
+                  description="No medium-risk applications need a manual decision right now."
+                  accent="amber"
+                  className="h-full"
+                />
               ) : (
                 reviewQueue.map((app) => (
                   <div
                     key={app.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-gradient-to-r from-white to-slate-50/80 p-3 shadow-sm transition-shadow hover:shadow-md"
+                    className={cn(
+                      "flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 shadow-sm transition-shadow hover:shadow-md",
+                      selectedReviewIds.has(app.id)
+                        ? "border-emerald-300 bg-emerald-50/50"
+                        : "border-slate-200/80 bg-gradient-to-r from-white to-slate-50/80",
+                    )}
                   >
-                    <div>
-                      <p className="font-medium text-slate-900">{app.applicantName}</p>
-                      <p className="text-sm text-slate-500">
-                        {formatCurrency(app.loanAmount)} ·{" "}
-                        {app.prediction
-                          ? formatPercent(app.prediction.defaultProbability)
-                          : "—"}{" "}
-                        risk
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedReviewIds.has(app.id)}
+                        onChange={() => toggleReviewSelection(app.id)}
+                        className="mt-1 h-4 w-4 cursor-pointer rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        aria-label={`Select ${app.applicantName}`}
+                      />
+                      <div>
+                        <p className="font-medium text-slate-900">{app.applicantName}</p>
+                        <p className="text-sm text-slate-500">
+                          {formatCurrency(app.loanAmount)} ·{" "}
+                          {app.prediction
+                            ? formatPercent(app.prediction.defaultProbability)
+                            : "—"}{" "}
+                          risk
+                        </p>
+                      </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={() => updateStatus(app.id, "APPROVED")}>
+                      <Button
+                        size="sm"
+                        onClick={() => updateStatus(app.id, "APPROVED", app.applicantName)}
+                      >
                         Approve
                       </Button>
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => updateStatus(app.id, "DECLINED")}
+                        onClick={() => updateStatus(app.id, "DECLINED", app.applicantName)}
                       >
                         Decline
                       </Button>
@@ -634,8 +890,26 @@ export function DashboardContent() {
 
         <Card className="mt-6 overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
           <CardHeader className="border-b border-slate-100/80 bg-gradient-to-r from-white to-violet-50/30 pb-4">
-            <CardTitle>All applications</CardTitle>
-            <CardDescription>Form submissions only, newest first</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>All applications</CardTitle>
+                <CardDescription>Form submissions only, newest first</CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportCsv}
+                disabled={exporting || !hasPortfolio}
+                className="border-slate-200/80 bg-white/80"
+              >
+                {exporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Export CSV
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-4">
             <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -714,26 +988,39 @@ export function DashboardContent() {
               {appsLoading && <LoadingOverlay label="Searching applications…" />}
 
               <div className="flex-1 overflow-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 z-[1] bg-slate-50/95 backdrop-blur-sm">
-                    <tr className="border-b border-slate-200/80 text-slate-500">
-                      <th className="px-4 py-3 font-medium">Applicant</th>
-                      <th className="px-4 py-3 font-medium">Date applied</th>
-                      <th className="px-4 py-3 font-medium">Loan</th>
-                      <th className="px-4 py-3 font-medium">Risk</th>
-                      <th className="px-4 py-3 font-medium">Status</th>
-                      <th className="px-4 py-3 font-medium">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {!appsLoading && (appsData?.applications ?? []).length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-16 text-center text-slate-500">
-                          No applications found.
-                        </td>
+                {!appsLoading && (appsData?.applications ?? []).length === 0 ? (
+                  <EmptyState
+                    icon={hasActiveFilters ? SearchX : ClipboardList}
+                    title={hasActiveFilters ? "No matching applications" : "No applications yet"}
+                    description={
+                      hasActiveFilters
+                        ? "Try adjusting your search or filters to find what you need."
+                        : "Submitted applications will show up in this table."
+                    }
+                    accent={hasActiveFilters ? "slate" : "indigo"}
+                    action={
+                      hasActiveFilters ? (
+                        <Button variant="outline" size="sm" onClick={resetFilters}>
+                          Reset filters
+                        </Button>
+                      ) : undefined
+                    }
+                    className="h-full"
+                  />
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 z-[1] bg-slate-50/95 backdrop-blur-sm">
+                      <tr className="border-b border-slate-200/80 text-slate-500">
+                        <th className="px-4 py-3 font-medium">Applicant</th>
+                        <th className="px-4 py-3 font-medium">Date applied</th>
+                        <th className="px-4 py-3 font-medium">Loan</th>
+                        <th className="px-4 py-3 font-medium">Risk</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 font-medium">Action</th>
                       </tr>
-                    ) : (
-                      (appsData?.applications ?? []).map((app) => (
+                    </thead>
+                    <tbody>
+                      {(appsData?.applications ?? []).map((app) => (
                         <tr
                           key={app.id}
                           className="border-b border-slate-100/80 transition-colors hover:bg-emerald-50/30"
@@ -756,9 +1043,19 @@ export function DashboardContent() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <Badge variant={statusBadgeVariant(app.status)}>
-                              {statusLabel(app.status)}
-                            </Badge>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Badge variant={statusBadgeVariant(app.status)}>
+                                {statusLabel(app.status)}
+                              </Badge>
+                              {needsVerification(app) && (
+                                <Badge
+                                  variant="warning"
+                                  className="border border-amber-300/60"
+                                >
+                                  Needs verification
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <Link
@@ -769,14 +1066,14 @@ export function DashboardContent() {
                             </Link>
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
 
               <div className="shrink-0 border-t border-slate-200/60 bg-white/80 px-4 py-3">
-                {appsData ? (
+                {appsData && appsData.total > 0 ? (
                   <PaginationBar
                     page={appsData.page}
                     totalPages={appsData.totalPages}
@@ -792,5 +1089,13 @@ export function DashboardContent() {
         </Card>
       </main>
     </div>
+  );
+}
+
+export function DashboardContent() {
+  return (
+    <ToastProvider>
+      <DashboardInner />
+    </ToastProvider>
   );
 }

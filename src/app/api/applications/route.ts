@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAnalyst } from "@/lib/analyst-auth";
-import { formApplicationsWhere } from "@/lib/application-filters";
+import { buildApplicationWhere } from "@/lib/application-query";
 import { prisma } from "@/lib/prisma";
 import { scoreWithMlService } from "@/lib/ml-client";
 import {
@@ -27,17 +27,7 @@ export async function GET(request: Request) {
   const riskTier = searchParams.get("riskTier") as RiskTier | null;
   const search = searchParams.get("search")?.trim();
 
-  const filters: Parameters<typeof formApplicationsWhere>[0] = {};
-  if (status) filters.status = status;
-  if (riskTier) filters.prediction = { is: { riskTier } };
-  if (search) {
-    filters.OR = [
-      { applicantName: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-    ];
-  }
-
-  const where = formApplicationsWhere(filters);
+  const where = buildApplicationWhere({ status, riskTier, search });
 
   try {
     const [applications, total] = await Promise.all([
