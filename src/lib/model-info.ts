@@ -10,7 +10,7 @@ export function modelVersionLabel(version: string) {
     return "Imported from Kaggle Home Credit dataset";
   }
   if (version.includes("heuristic")) {
-    return "Built-in risk formula (start ML service for Kaggle model)";
+    return "Built-in risk formula";
   }
   if (version.includes("seed")) {
     return "Legacy demo record";

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { format } from "date-fns";
+import { AlertTriangle, CalendarDays } from "lucide-react";
 import { AdvisorChat } from "@/components/advisor-chat";
 import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { isAnalystAuthenticated } from "@/lib/analyst-auth";
 import { prisma } from "@/lib/prisma";
-import { modelVersionLabel, isKaggleRecord } from "@/lib/model-info";
+import { modelVersionLabel } from "@/lib/model-info";
 import { statusLabel, tierLabel } from "@/lib/scoring";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 
@@ -57,20 +59,22 @@ export default async function ApplicationDetailPage({ params }: Params) {
   if (!application || !application.prediction) notFound();
 
   const { prediction } = application;
+  const appliedAt = format(new Date(application.createdAt), "MMMM d, yyyy 'at' h:mm a");
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-slate-100">
       <Navbar />
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{application.applicantName}</h1>
             <p className="text-slate-600">{application.email}</p>
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-slate-500">
+              <CalendarDays className="h-4 w-4 text-emerald-600" />
+              Applied {appliedAt}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isKaggleRecord(application.email, application.loanPurpose) && (
-              <Badge variant="default">Kaggle Home Credit</Badge>
-            )}
             <Badge variant={tierBadgeVariant(prediction.riskTier)}>
               {tierLabel(prediction.riskTier)}
             </Badge>
@@ -79,6 +83,20 @@ export default async function ApplicationDetailPage({ params }: Params) {
             </Badge>
           </div>
         </div>
+
+        {application.status === "APPROVED" && (
+          <div className="mb-6 flex gap-3 rounded-xl border border-amber-200/80 bg-gradient-to-r from-amber-50 to-orange-50/80 px-4 py-3 text-sm text-amber-950 shadow-sm">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="font-semibold">Verification required</p>
+              <p className="mt-1 text-amber-900/90">
+                This application was automatically approved based on its risk score. An analyst
+                must verify that all submitted information is accurate and supported by documents.
+                Incorrect or falsified data may result in rejection or cancellation of the loan.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-6">
@@ -104,7 +122,7 @@ export default async function ApplicationDetailPage({ params }: Params) {
                 </div>
                 <p className="text-sm text-slate-600">
                   {prediction.riskTier === "LOW" &&
-                    "Eligible for automatic approval based on risk profile."}
+                    "Eligible for automatic approval based on risk profile — subject to information verification."}
                   {prediction.riskTier === "MEDIUM" &&
                     "Flagged for manual review by a loan officer."}
                   {prediction.riskTier === "HIGH" &&
@@ -144,6 +162,10 @@ export default async function ApplicationDetailPage({ params }: Params) {
               </CardHeader>
               <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
                 <p>
+                  <span className="text-slate-500">Date applied:</span>{" "}
+                  {format(new Date(application.createdAt), "MMM d, yyyy")}
+                </p>
+                <p>
                   <span className="text-slate-500">Loan amount:</span>{" "}
                   {formatCurrency(application.loanAmount)}
                 </p>
@@ -163,9 +185,19 @@ export default async function ApplicationDetailPage({ params }: Params) {
                   {application.creditHistoryYears} years
                 </p>
                 <p>
+                  <span className="text-slate-500">Credit inquiries (12 mo):</span>{" "}
+                  {application.numCreditInquiries}
+                </p>
+                <p>
                   <span className="text-slate-500">Delinquency:</span>{" "}
                   {application.hasDelinquency ? "Yes" : "No"}
                 </p>
+                {application.loanPurpose && (
+                  <p className="sm:col-span-2">
+                    <span className="text-slate-500">Loan purpose:</span>{" "}
+                    {application.loanPurpose}
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

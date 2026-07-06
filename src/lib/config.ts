@@ -5,7 +5,7 @@ export const CURRENCY = "PHP";
 
 /** Validation bounds (amounts in Philippine Peso) */
 export const LIMITS = {
-  minAnnualIncome: 120_000, // ~₱10,000/month
+  minAnnualIncome: 0,
   maxAnnualIncome: 50_000_000,
   minLoanAmount: 5_000,
   maxLoanAmount: 3_000_000, // typical personal loan ceiling

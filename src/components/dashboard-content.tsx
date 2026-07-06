@@ -48,6 +48,7 @@ type Stats = {
   approved: number;
   review: number;
   declined: number;
+  statusCounts: { pending: number; approved: number; declined: number };
   tierCounts: { LOW: number; MEDIUM: number; HIGH: number };
   avgRisk: number;
 };
@@ -55,14 +56,21 @@ type Stats = {
 type ChartSlice = {
   name: string;
   count: number;
-  percent: number;
+  sharePercent: number;
   fill: string;
+  gradientId: string;
 };
 
-const TIER_STYLES = {
-  Low: { fill: "#10b981", gradient: "from-emerald-400 to-emerald-600" },
-  Medium: { fill: "#f59e0b", gradient: "from-amber-400 to-amber-600" },
-  High: { fill: "#ef4444", gradient: "from-red-400 to-red-600" },
+const TIER_COLORS = {
+  Low: "#10b981",
+  Medium: "#f59e0b",
+  High: "#ef4444",
+} as const;
+
+const STATUS_COLORS = {
+  Pending: "#6366f1",
+  Approved: "#10b981",
+  Declined: "#ef4444",
 } as const;
 
 const REVIEW_PAGE_SIZE = 3;
@@ -81,6 +89,22 @@ function statusBadgeVariant(status: string) {
   if (status === "REVIEW") return "warning" as const;
   if (status === "DECLINED") return "danger" as const;
   return "default" as const;
+}
+
+function buildChartSlices(
+  items: { name: string; count: number }[],
+  colors: Record<string, string>,
+  idPrefix: string,
+): ChartSlice[] {
+  const filtered = items.filter((d) => d.count > 0);
+  const total = filtered.reduce((sum, d) => sum + d.count, 0);
+  return filtered.map((d) => ({
+    name: d.name,
+    count: d.count,
+    sharePercent: total > 0 ? (d.count / total) * 100 : 0,
+    fill: colors[d.name as keyof typeof colors] ?? "#94a3b8",
+    gradientId: `${idPrefix}-${d.name.replace(/\s+/g, "-").toLowerCase()}`,
+  }));
 }
 
 function PaginationBar({
@@ -137,50 +161,132 @@ function LoadingOverlay({ label }: { label?: string }) {
 function ChartTooltip({
   active,
   payload,
+  labelSuffix = "risk",
 }: {
   active?: boolean;
   payload?: { payload: ChartSlice }[];
+  labelSuffix?: string;
 }) {
   if (!active || !payload?.length) return null;
   const slice = payload[0].payload;
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm">
-      <p className="font-semibold text-slate-900">{slice.name} risk</p>
+      <p className="font-semibold text-slate-900">
+        {slice.name} {labelSuffix}
+      </p>
       <p className="mt-1 text-sm text-slate-600">
         {slice.count} application{slice.count !== 1 ? "s" : ""}
       </p>
-      <p className="text-sm font-medium text-emerald-700">{slice.percent.toFixed(1)}% of portfolio</p>
+      <p className="text-sm font-medium text-emerald-700">
+        {slice.sharePercent.toFixed(1)}% of portfolio
+      </p>
     </div>
   );
 }
 
-function renderPieLabel(props: {
-  cx?: number;
-  cy?: number;
-  midAngle?: number;
-  innerRadius?: number;
-  outerRadius?: number;
-  percent?: number;
-  name?: string;
+function DistributionPieCard({
+  title,
+  description,
+  headerGradient,
+  data,
+  centerLabel,
+  tooltipSuffix = "risk",
+}: {
+  title: string;
+  description: string;
+  headerGradient: string;
+  data: ChartSlice[];
+  centerLabel: string;
+  tooltipSuffix?: string;
 }) {
-  const { cx = 0, cy = 0, midAngle = 0, innerRadius = 0, outerRadius = 0, percent = 0, name = "" } =
-    props;
-  if (percent < 0.05) return null;
-  const RADIAN = Math.PI / 180;
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  const total = data.reduce((sum, d) => sum + d.count, 0);
+
   return (
-    <text
-      x={x}
-      y={y}
-      fill="white"
-      textAnchor="middle"
-      dominantBaseline="central"
-      className="pointer-events-none text-[11px] font-semibold drop-shadow-sm"
-    >
-      {`${name} ${(percent * 100).toFixed(0)}%`}
-    </text>
+    <Card className="overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
+      <CardHeader className={cn("border-b border-slate-100/80 pb-4", headerGradient)}>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="relative mx-auto aspect-square max-h-[380px] w-full min-h-[320px]">
+          {data.length === 0 ? (
+            <p className="flex h-full items-center justify-center text-sm text-slate-500">
+              No applications yet.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <defs>
+                  {data.map((entry) => (
+                    <linearGradient
+                      key={entry.gradientId}
+                      id={entry.gradientId}
+                      x1="0"
+                      y1="0"
+                      x2="1"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor={entry.fill} stopOpacity={1} />
+                      <stop offset="100%" stopColor={entry.fill} stopOpacity={0.75} />
+                    </linearGradient>
+                  ))}
+                </defs>
+                <Pie
+                  data={data}
+                  dataKey="count"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="52%"
+                  outerRadius="78%"
+                  paddingAngle={3}
+                  stroke="white"
+                  strokeWidth={2}
+                >
+                  {data.map((entry) => (
+                    <Cell key={entry.name} fill={`url(#${entry.gradientId})`} />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip labelSuffix={tooltipSuffix} />} />
+                <Legend
+                  verticalAlign="bottom"
+                  formatter={(value, entry) => {
+                    const slice = entry.payload as ChartSlice | undefined;
+                    if (!slice) return value;
+                    return (
+                      <span className="text-sm text-slate-700">
+                        {value}{" "}
+                        <span className="font-medium text-slate-900">
+                          ({slice.count} · {slice.sharePercent.toFixed(1)}%)
+                        </span>
+                      </span>
+                    );
+                  }}
+                />
+                <text
+                  x="50%"
+                  y="46%"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="fill-slate-900 text-2xl font-bold"
+                >
+                  {total}
+                </text>
+                <text
+                  x="50%"
+                  y="54%"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="fill-slate-500 text-xs"
+                >
+                  {centerLabel}
+                </text>
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -192,10 +298,6 @@ export function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [appsLoading, setAppsLoading] = useState(false);
-  const [mlStatus, setMlStatus] = useState<{
-    online: boolean;
-    modelLoaded: boolean;
-  } | null>(null);
 
   const [reviewPage, setReviewPage] = useState(1);
   const [appsPage, setAppsPage] = useState(1);
@@ -296,17 +398,6 @@ export function DashboardContent() {
     void loadAppsSection();
   }, [loadAppsSection]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const response = await fetch("/api/ml/status");
-        setMlStatus(await response.json());
-      } catch {
-        setMlStatus({ online: false, modelLoaded: false });
-      }
-    })();
-  }, []);
-
   async function refreshAll() {
     await Promise.all([loadDashboard(), loadAppsSection()]);
   }
@@ -341,22 +432,32 @@ export function DashboardContent() {
 
   const hasActiveFilters = Boolean(searchInput || statusFilter || tierFilter);
 
-  const chartData = useMemo((): ChartSlice[] => {
+  const tierChartData = useMemo((): ChartSlice[] => {
     if (!stats) return [];
-    const raw = [
-      { name: "Low", count: stats.tierCounts.LOW },
-      { name: "Medium", count: stats.tierCounts.MEDIUM },
-      { name: "High", count: stats.tierCounts.HIGH },
-    ].filter((d) => d.count > 0);
-    const total = raw.reduce((sum, d) => sum + d.count, 0);
-    return raw.map((d) => ({
-      ...d,
-      percent: total > 0 ? (d.count / total) * 100 : 0,
-      fill: TIER_STYLES[d.name as keyof typeof TIER_STYLES].fill,
-    }));
+    return buildChartSlices(
+      [
+        { name: "Low", count: stats.tierCounts.LOW },
+        { name: "Medium", count: stats.tierCounts.MEDIUM },
+        { name: "High", count: stats.tierCounts.HIGH },
+      ],
+      TIER_COLORS,
+      "tier",
+    );
   }, [stats]);
 
-  const chartTotal = chartData.reduce((sum, d) => sum + d.count, 0);
+  const statusChartData = useMemo((): ChartSlice[] => {
+    if (!stats) return [];
+    return buildChartSlices(
+      [
+        { name: "Pending", count: stats.statusCounts.pending },
+        { name: "Approved", count: stats.statusCounts.approved },
+        { name: "Declined", count: stats.statusCounts.declined },
+      ],
+      STATUS_COLORS,
+      "status",
+    );
+  }, [stats]);
+
   const reviewQueue = reviewData?.applications ?? [];
 
   const statCards = stats
@@ -428,30 +529,6 @@ export function DashboardContent() {
           </div>
         )}
 
-        {mlStatus && (
-          <div
-            className={cn(
-              "mb-6 rounded-xl border px-4 py-3 text-sm shadow-sm backdrop-blur-sm",
-              mlStatus.online && mlStatus.modelLoaded
-                ? "border-emerald-200/80 bg-gradient-to-r from-emerald-50/90 to-teal-50/60 text-emerald-900"
-                : "border-slate-200/80 bg-white/80 text-slate-600",
-            )}
-          >
-            {mlStatus.online && mlStatus.modelLoaded ? (
-              <>
-                <strong>ML service online.</strong> New applications are scored with the
-                trained XGBoost model.
-              </>
-            ) : (
-              <>
-                <strong>ML service offline.</strong> Run{" "}
-                <code className="rounded bg-white/80 px-1">npm run ml:serve</code> in a second
-                terminal to score new applications with the trained model.
-              </>
-            )}
-          </div>
-        )}
-
         {stats && (
           <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {statCards.map((item) => (
@@ -472,162 +549,88 @@ export function DashboardContent() {
         )}
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
-            <CardHeader className="border-b border-slate-100/80 bg-gradient-to-r from-white to-emerald-50/40 pb-4">
-              <CardTitle>Risk tier distribution</CardTitle>
-              <CardDescription>Share of applications by risk tier</CardDescription>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="relative mx-auto aspect-square max-h-[380px] w-full min-h-[320px]">
-                {chartData.length === 0 ? (
-                  <p className="flex h-full items-center justify-center text-sm text-slate-500">
-                    No applications yet.
-                  </p>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <defs>
-                        {chartData.map((entry) => (
-                          <linearGradient
-                            key={entry.name}
-                            id={`tier-gradient-${entry.name}`}
-                            x1="0"
-                            y1="0"
-                            x2="1"
-                            y2="1"
-                          >
-                            <stop offset="0%" stopColor={entry.fill} stopOpacity={1} />
-                            <stop offset="100%" stopColor={entry.fill} stopOpacity={0.75} />
-                          </linearGradient>
-                        ))}
-                      </defs>
-                      <Pie
-                        data={chartData}
-                        dataKey="count"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius="52%"
-                        outerRadius="78%"
-                        paddingAngle={3}
-                        stroke="white"
-                        strokeWidth={2}
-                        label={renderPieLabel}
-                        labelLine={false}
-                      >
-                        {chartData.map((entry) => (
-                          <Cell
-                            key={entry.name}
-                            fill={`url(#tier-gradient-${entry.name})`}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<ChartTooltip />} />
-                      <Legend
-                        verticalAlign="bottom"
-                        formatter={(value, entry) => {
-                          const slice = entry.payload as ChartSlice | undefined;
-                          if (!slice) return value;
-                          return (
-                            <span className="text-sm text-slate-700">
-                              {value}{" "}
-                              <span className="font-medium text-slate-900">
-                                ({slice.count} · {slice.percent.toFixed(1)}%)
-                              </span>
-                            </span>
-                          );
-                        }}
-                      />
-                      <text
-                        x="50%"
-                        y="46%"
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        className="fill-slate-900 text-2xl font-bold"
-                      >
-                        {chartTotal}
-                      </text>
-                      <text
-                        x="50%"
-                        y="54%"
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        className="fill-slate-500 text-xs"
-                      >
-                        applications
-                      </text>
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="flex flex-col overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
-            <CardHeader className="border-b border-slate-100/80 bg-gradient-to-r from-white to-amber-50/40 pb-4">
-              <CardTitle>Review queue</CardTitle>
-              <CardDescription>Medium-risk applications needing manual decision</CardDescription>
-            </CardHeader>
-            <CardContent
-              className="flex flex-col p-4"
-              style={{ minHeight: REVIEW_QUEUE_HEIGHT }}
-            >
-              <div className="relative flex-1 space-y-3">
-                {dashboardLoading && reviewQueue.length === 0 ? (
-                  <LoadingOverlay label="Loading review queue…" />
-                ) : reviewQueue.length === 0 ? (
-                  <p className="flex h-full items-center justify-center text-sm text-slate-500">
-                    No applications pending review.
-                  </p>
-                ) : (
-                  reviewQueue.map((app) => (
-                    <div
-                      key={app.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-gradient-to-r from-white to-slate-50/80 p-3 shadow-sm transition-shadow hover:shadow-md"
-                    >
-                      <div>
-                        <p className="font-medium text-slate-900">{app.applicantName}</p>
-                        <p className="text-sm text-slate-500">
-                          {formatCurrency(app.loanAmount)} ·{" "}
-                          {app.prediction
-                            ? formatPercent(app.prediction.defaultProbability)
-                            : "—"}{" "}
-                          risk
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => updateStatus(app.id, "APPROVED")}>
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => updateStatus(app.id, "DECLINED")}
-                        >
-                          Decline
-                        </Button>
-                        <Link
-                          href={`/applications/${app.id}`}
-                          className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
-                        >
-                          View
-                        </Link>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              {reviewData && (
-                <PaginationBar
-                  page={reviewData.page}
-                  totalPages={reviewData.totalPages}
-                  total={reviewData.total}
-                  onPageChange={setReviewPage}
-                />
-              )}
-            </CardContent>
-          </Card>
+          <DistributionPieCard
+            title="Risk tier distribution"
+            description="Share of applications by predicted risk tier"
+            headerGradient="bg-gradient-to-r from-white to-emerald-50/40"
+            data={tierChartData}
+            centerLabel="applications"
+            tooltipSuffix="risk tier"
+          />
+          <DistributionPieCard
+            title="Application status"
+            description="Pending (incl. manual review), approved, and declined"
+            headerGradient="bg-gradient-to-r from-white to-indigo-50/40"
+            data={statusChartData}
+            centerLabel="applications"
+            tooltipSuffix="status"
+          />
         </div>
+
+        <Card className="mt-6 flex flex-col overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
+          <CardHeader className="border-b border-slate-100/80 bg-gradient-to-r from-white to-amber-50/40 pb-4">
+            <CardTitle>Review queue</CardTitle>
+            <CardDescription>Medium-risk applications needing manual decision</CardDescription>
+          </CardHeader>
+          <CardContent
+            className="flex flex-col p-4"
+            style={{ minHeight: REVIEW_QUEUE_HEIGHT }}
+          >
+            <div className="relative flex-1 space-y-3">
+              {dashboardLoading && reviewQueue.length === 0 ? (
+                <LoadingOverlay label="Loading review queue…" />
+              ) : reviewQueue.length === 0 ? (
+                <p className="flex h-full items-center justify-center text-sm text-slate-500">
+                  No applications pending review.
+                </p>
+              ) : (
+                reviewQueue.map((app) => (
+                  <div
+                    key={app.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-gradient-to-r from-white to-slate-50/80 p-3 shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-900">{app.applicantName}</p>
+                      <p className="text-sm text-slate-500">
+                        {formatCurrency(app.loanAmount)} ·{" "}
+                        {app.prediction
+                          ? formatPercent(app.prediction.defaultProbability)
+                          : "—"}{" "}
+                        risk
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => updateStatus(app.id, "APPROVED")}>
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => updateStatus(app.id, "DECLINED")}
+                      >
+                        Decline
+                      </Button>
+                      <Link
+                        href={`/applications/${app.id}`}
+                        className={cn(buttonVariants({ size: "sm", variant: "outline" }))}
+                      >
+                        View
+                      </Link>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            {reviewData && (
+              <PaginationBar
+                page={reviewData.page}
+                totalPages={reviewData.totalPages}
+                total={reviewData.total}
+                onPageChange={setReviewPage}
+              />
+            )}
+          </CardContent>
+        </Card>
 
         <Card className="mt-6 overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
           <CardHeader className="border-b border-slate-100/80 bg-gradient-to-r from-white to-violet-50/30 pb-4">
@@ -665,7 +668,7 @@ export function DashboardContent() {
                     setStatusFilter(e.target.value);
                     setAppsPage(1);
                   }}
-                  className="h-9 rounded-md border border-slate-200/80 bg-white/90 px-3 text-sm shadow-sm"
+                  className="h-9 cursor-pointer rounded-md border border-slate-200/80 bg-white/90 px-3 text-sm shadow-sm"
                 >
                   <option value="">All statuses</option>
                   <option value="PENDING">Pending</option>
@@ -685,7 +688,7 @@ export function DashboardContent() {
                     setTierFilter(e.target.value);
                     setAppsPage(1);
                   }}
-                  className="h-9 rounded-md border border-slate-200/80 bg-white/90 px-3 text-sm shadow-sm"
+                  className="h-9 cursor-pointer rounded-md border border-slate-200/80 bg-white/90 px-3 text-sm shadow-sm"
                 >
                   <option value="">All tiers</option>
                   <option value="LOW">Low</option>
@@ -760,7 +763,7 @@ export function DashboardContent() {
                           <td className="px-4 py-3">
                             <Link
                               href={`/applications/${app.id}`}
-                              className="font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
+                              className="cursor-pointer font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
                             >
                               Details
                             </Link>

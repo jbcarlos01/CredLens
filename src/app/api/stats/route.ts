@@ -10,11 +10,14 @@ export async function GET() {
   const where = formApplicationsWhere();
 
   try {
-    const [total, approved, review, declined, predictions] = await Promise.all([
+    const [total, approved, review, declined, pending, predictions] = await Promise.all([
       prisma.application.count({ where }),
       prisma.application.count({ where: { ...where, status: "APPROVED" } }),
       prisma.application.count({ where: { ...where, status: "REVIEW" } }),
       prisma.application.count({ where: { ...where, status: "DECLINED" } }),
+      prisma.application.count({
+        where: { ...where, status: { in: ["PENDING", "REVIEW"] } },
+      }),
       prisma.prediction.findMany({
         where: { application: where },
         select: { defaultProbability: true, riskTier: true },
@@ -32,11 +35,18 @@ export async function GET() {
         ? predictions.reduce((s, p) => s + p.defaultProbability, 0) / predictions.length
         : 0;
 
+    const statusCounts = {
+      pending,
+      approved,
+      declined,
+    };
+
     return NextResponse.json({
       total,
       approved,
       review,
       declined,
+      statusCounts,
       tierCounts,
       avgRisk,
     });

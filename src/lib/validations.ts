@@ -16,7 +16,7 @@ export const applicationSchema = z.object({
   employmentYears: z.number().min(0).max(50),
   annualIncome: z
     .number()
-    .min(LIMITS.minAnnualIncome, "Income must be at least ₱120,000 per year"),
+    .min(LIMITS.minAnnualIncome, "Income cannot be negative"),
   loanAmount: z
     .number()
     .min(LIMITS.minLoanAmount, "Minimum loan is ₱5,000")
