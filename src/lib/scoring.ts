@@ -231,7 +231,7 @@ export function statusLabel(status: string) {
     case "APPROVED":
       return "Approved";
     case "REVIEW":
-      return "Manual Review";
+      return "Pending";
     case "DECLINED":
       return "Declined";
     default:

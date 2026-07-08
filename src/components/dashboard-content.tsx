@@ -209,6 +209,7 @@ function DistributionPieCard({
   emptyTitle,
   emptyDescription,
   emptyAccent,
+  headerMetric,
 }: {
   title: string;
   description: string;
@@ -219,14 +220,25 @@ function DistributionPieCard({
   emptyTitle: string;
   emptyDescription: string;
   emptyAccent: "emerald" | "indigo";
+  headerMetric?: { label: string; value: string };
 }) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
 
   return (
     <Card className="overflow-hidden border-slate-200/60 bg-white/90 shadow-md backdrop-blur-sm">
       <CardHeader className={cn("border-b border-slate-100/80 pb-4", headerGradient)}>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+          {headerMetric && (
+            <div className="shrink-0 rounded-xl border border-violet-200/60 bg-violet-50/80 px-3 py-2 text-right">
+              <p className="text-xs font-medium text-violet-600">{headerMetric.label}</p>
+              <p className="text-lg font-bold text-violet-800">{headerMetric.value}</p>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="p-4">
         <div className="relative mx-auto aspect-square max-h-[380px] w-full min-h-[320px]">
@@ -628,35 +640,6 @@ function DashboardInner() {
     reviewQueue.length > 0 && reviewQueue.every((app) => selectedReviewIds.has(app.id));
   const hasPortfolio = (stats?.total ?? 0) > 0;
 
-  const statCards = stats
-    ? [
-        {
-          label: "Total applications",
-          value: stats.total,
-          gradient: "from-slate-50 to-white",
-          accent: "text-slate-900",
-        },
-        {
-          label: "Approved",
-          value: stats.approved,
-          gradient: "from-emerald-50/80 to-white",
-          accent: "text-emerald-700",
-        },
-        {
-          label: "In review",
-          value: stats.review,
-          gradient: "from-amber-50/80 to-white",
-          accent: "text-amber-700",
-        },
-        {
-          label: "Avg default risk",
-          value: formatPercent(stats.avgRisk),
-          gradient: "from-violet-50/80 to-white",
-          accent: "text-violet-700",
-        },
-      ]
-    : [];
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-slate-100">
       <Navbar />
@@ -713,25 +696,6 @@ function DashboardInner() {
           </Card>
         )}
 
-        {stats && hasPortfolio && (
-          <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {statCards.map((item) => (
-              <Card
-                key={item.label}
-                className={cn(
-                  "overflow-hidden border-slate-200/60 bg-gradient-to-br shadow-sm backdrop-blur-sm",
-                  item.gradient,
-                )}
-              >
-                <CardHeader className="pb-2">
-                  <CardDescription>{item.label}</CardDescription>
-                  <CardTitle className={cn("text-2xl", item.accent)}>{item.value}</CardTitle>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        )}
-
         {hasPortfolio && (
           <div className="grid gap-6 lg:grid-cols-2">
             <DistributionPieCard
@@ -744,10 +708,15 @@ function DashboardInner() {
               emptyTitle="No risk data yet"
               emptyDescription="Charts will populate once applications are scored."
               emptyAccent="emerald"
+              headerMetric={
+                stats
+                  ? { label: "Avg default risk", value: formatPercent(stats.avgRisk) }
+                  : undefined
+              }
             />
             <DistributionPieCard
               title="Application status"
-              description="Pending (incl. manual review), approved, and declined"
+              description="Pending, approved, and declined"
               headerGradient="bg-gradient-to-r from-white to-indigo-50/40"
               data={statusChartData}
               centerLabel="applications"
@@ -945,9 +914,8 @@ function DashboardInner() {
                   className="h-9 cursor-pointer rounded-md border border-slate-200/80 bg-white/90 px-3 text-sm shadow-sm"
                 >
                   <option value="">All statuses</option>
-                  <option value="PENDING">Pending</option>
+                  <option value="REVIEW">Pending</option>
                   <option value="APPROVED">Approved</option>
-                  <option value="REVIEW">In review</option>
                   <option value="DECLINED">Declined</option>
                 </select>
               </div>
